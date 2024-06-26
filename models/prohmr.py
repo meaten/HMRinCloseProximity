@@ -1,8 +1,8 @@
 from typing import Dict
 
 import torch
-from prohmr.models.prohmr import ProHMR
-from prohmr.utils.geometry import aa_to_rotmat, perspective_projection
+from ProHMR.prohmr.models.prohmr import ProHMR
+from ProHMR.prohmr.utils.geometry import aa_to_rotmat, perspective_projection
 
 class CustomProHMR(ProHMR):
     def forward_step(self, batch: Dict, train: bool = False) -> Dict:

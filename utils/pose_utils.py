@@ -6,12 +6,31 @@ import torch
 import numpy as np
 import scipy
 from typing import Optional, Dict, List, Tuple
+from scipy.io import loadmat
 
 from torch.distributions.categorical import Categorical
 
 from pytorch3d.structures import Meshes, Pointclouds
 from pytorch3d.loss.point_mesh_distance import point_face_distance
-from pytorch3d._C import point_face_dist_forward
+
+from ProHMR.prohmr.utils.pose_utils import Evaluator
+
+
+class Timer(object):
+    def __init__(self):
+        self.starter = torch.cuda.Event(enable_timing=True)
+        self.ender = torch.cuda.Event(enable_timing=True)
+        
+    def start(self):
+        torch.cuda.synchronize()
+        self.starter.record()
+    
+    def end(self):
+        self.ender.record()
+        
+    def elapsed_time(self):
+        torch.cuda.synchronize()
+        return self.starter.elapsed_time(self.ender)
 
 def compute_similarity_transform(S1: torch.Tensor, S2: torch.Tensor) -> torch.Tensor:
     """
@@ -134,36 +153,16 @@ def unsort_unique(array):
     uniq, index = np.unique(array, return_index=True)
     return uniq[index.argsort()]
 
-class Evaluator:
 
+class CustomEvaluator(Evaluator):
     def __init__(self,
                  dataset_length: int,
                  keypoint_list: List,
                  pelvis_ind: int,
-                 smpl, 
-                 metrics: List = ['mode_mpjpe', 'mode_re', 'min_mpjpe', 'min_re']):
-        """
-        Class used for evaluating trained models on different 3D pose datasets.
-        Args:
-            dataset_length (int): Total dataset length.
-            keypoint_list [List]: List of keypoints used for evaluation.
-            pelvis_ind (int): Index of pelvis keypoint; used for aligning the predictions and ground truth.
-            metrics [List]: List of evaluation metrics to record.
-        """
-        self.dataset_length = dataset_length
-        self.keypoint_list = keypoint_list
-        self.pelvis_ind = pelvis_ind
-        self.metrics = metrics
-        for metric in self.metrics:
-            if metric == 'corr':
-                setattr(self, metric, np.zeros(
-                    (dataset_length, len(keypoint_list))))
-            elif metric == 'corr_per_joint':
-                setattr(self, metric, np.zeros(
-                    (dataset_length, len(keypoint_list), len(keypoint_list))))
-            else:
-                setattr(self, metric, np.zeros((dataset_length,)))
-        self.counter = 0
+                 smpl,
+                 metrics: List = ['mode_mpjpe', 'mode_re', 'min_mpjpe', 'min_re'],
+                 n_measure_points=30):
+        super().__init__(dataset_length, keypoint_list, pelvis_ind, metrics)
         
         Vmap, faces = load_downsample_mat('./data/datasets/mesh_downsampling.npz')
         self.Vmap = torch.where(Vmap.cuda() > 0)[1]
@@ -171,6 +170,10 @@ class Evaluator:
         self.faces_full = smpl.faces
         self.faces = torch.IntTensor(np.array(faces, dtype=int)).cuda()
 
+        self.n_measure_points = n_measure_points
+        
+        self.timer = Timer()
+        
     def log(self):
         """
         Print current evaluation metrics
@@ -179,14 +182,12 @@ class Evaluator:
             print('Evaluation has not started')
             return
         print(f'{self.counter} / {self.dataset_length} samples')
-        np.set_printoptions(precision=2, suppress=True, linewidth=100)
         for metric in self.metrics:
-            if 'corr' in metric:
-                print(
-                    f'{metric}: {getattr(self, metric)[:self.counter].mean(axis=0)}')
+            if not 'time' in metric:
+                print(f'{metric}: {getattr(self, metric)[:self.counter].mean()} mm')
             else:
-                print(
-                    f'{metric}: {getattr(self, metric)[:self.counter].mean()} mm')
+                print(f'{metric}: {getattr(self, metric)[:self.counter].mean()} ms \
+                      ({np.sqrt(getattr(self, metric)[:self.counter].var())} ms)')
         print('***')
 
     def __call__(self, output: Dict, batch: Dict, opt_output: Optional[Dict] = None, flow_net=None, smpl=None):
@@ -241,138 +242,15 @@ class Evaluator:
         if hasattr(self, 'min_re'):
             min_re = re.min(axis=-1)
             self.min_re[self.counter:self.counter+batch_size] = min_re
-            
-            
-        def filtering(pred_vertices, target_vertices, pred_normals, target_normals, idx_vert, sigma_noise=0.02):
-            pred_vertices_filter = torch.gather(pred_vertices, 2, idx_vert[:, None, :, None].expand(-1, num_samples, -1, 3))
-            target_vertices_filter = torch.gather(target_vertices, 1, idx_vert[:, :, None].expand(-1, -1, 3)).unsqueeze(1)
-            # noise on depth measurement (y axis in the camera coordinate system)
-            noise = torch.randn_like(target_vertices_filter) * sigma_noise
-            noise[..., [0, 2]] = 0
-            target_vertices_filter_noise = target_vertices_filter + noise
-            vertex_error = torch.norm(pred_vertices_filter - target_vertices_filter_noise, dim=-1).mean(dim=-1)
-            
-            pred_normals_filter = torch.gather(pred_normals, 2, idx_vert[:, None, :, None].expand(-1, num_samples, -1, 3))
-            target_normals_filter = torch.gather(target_normals, 1, idx_vert[:, :, None].expand(-1, -1, 3))
-            normal_error = - torch.einsum('ijkl,ikl->ijk', pred_normals_filter, target_normals_filter).mean(dim=-1)
-            
-            error = normal_error + vertex_error #- output["log_prob"] / 1000
-            # error = vertex_error - output["log_prob"] / 1000
-            idx_min_error = torch.argmin(error, dim=1)
-            
-            return idx_min_error
         
-        def optimization(target_vertices, output, idx_min_error, idx_vert, sigma_noise=0.02):
-            target_vertices_filter = torch.gather(target_vertices, 1, idx_vert[:, :, None].expand(-1, -1, 3)).unsqueeze(1)
-            # noise on depth measurement (y axis in the camera coordinate system)
-            noise = torch.randn_like(target_vertices_filter) * sigma_noise
-            noise[..., [0, 2]] = 0
-            target_vertices_filter_noise = target_vertices_filter + noise
-            pcls = Pointclouds(points=[v[0] for v in target_vertices_filter_noise])
-
-            # packed representation for pointclouds
-            points = pcls.points_packed()  # (P, 3)
-            points_first_idx = pcls.cloud_to_packed_first_idx()
-            max_points = pcls.num_points_per_cloud().max().item()
             
-            # Get predicted betas
-            betas = torch.gather(output['pred_smpl_params']['betas'].detach().clone(), 1, idx_min_error[:, None, None].tile([1, 1, 10]))[:, 0]
-            global_orient = torch.gather(output['pred_smpl_params']['global_orient'].detach().clone(), 1, idx_min_error[:, None, None, None, None].tile([1, 1, 1, 3, 3]))[:, 0]
-            z_init = torch.gather(output['z'].detach().clone(), 1, idx_min_error[:, None, None].tile([1, 1, 144]))[:, 0]
-            z = z_init.detach().clone()
-            conditioning_feats = output['conditioning_feats'].detach().clone()
-
-            # Make z, betas and camera_translation optimizable
-            z.requires_grad = True
-
-            # Setup optimizer
-            opt_params = [z]
-            optimizer = torch.optim.LBFGS(
-                opt_params, lr=1.0, max_iter=5, line_search_fn='strong_wolfe')
+        if hasattr(self, 'rmms_mpjpe') or hasattr(self, 'rmsf_mpjpe') or hasattr(self, 'amms_mpjpe') or  hasattr(self, 'amsf_mpjpe'):
             
-            def pose_prior(z1, z2):
-                return ((z1 - z2) ** 2).mean(dim=1)
-
-            # Define fitting closure
-            def closure():
-                optimizer.zero_grad(set_to_none=True)
-                smpl_params, _, _, _, _ = flow_net(
-                    conditioning_feats, z=z.unsqueeze(1))
-                smpl_params = {k: v.squeeze(1)
-                                for k, v in smpl_params.items()}
-                # Override regression betas with the optimizable variable
-                smpl_params['betas'] = betas
-                smpl_params['global_orient'] = global_orient
-                smpl_output = smpl(**smpl_params, pose2rot=False)
-                curr_vertices = smpl_output.vertices[:, self.Vmap]
-                mesh = Meshes(verts=list(curr_vertices),
-                                faces=[self.faces] * len(curr_vertices))
-                # packed representation for faces
-                verts_packed = mesh.verts_packed()
-                faces_packed = mesh.faces_packed()
-                tris = verts_packed[faces_packed]  # (T, 3, 3)
-                tris_first_idx = mesh.mesh_to_faces_packed_first_idx()
-
-                loss = point_face_distance(
-                    points, points_first_idx, tris, tris_first_idx, max_points, 0.005).mean()
-
-                # this face_dists does not update z by backward calc
-                # face_dists, face_idxs = point_face_dist_forward(
-                #     points, points_first_idx, tris, tris_first_idx, max_points, 0.005)
-                # if not len(normal_measurements) == 0:
-                #     face_normals = mesh.faces_normals_packed()[face_idxs]
-                #     cos_sims = torch.nn.functional.cosine_similarity(
-                #         face_normals[:len(normal_measurements)], normal_measurements, dim=-1)
-                #     loss -= cos_sims.mean() / 10
-
-                loss += pose_prior(z, z_init).mean() * 1e-2
-                loss.backward()
-                return loss
-
-            # Run fitting until convergence
-            gtol = 1e-9
-            ftol = 1e-9
-            prev_loss = None
-            for i in range(10):
-                loss = optimizer.step(closure)
-                if i > 0:
-                    loss_rel_change = rel_change(prev_loss, loss.item())
-                    if loss_rel_change < ftol:
-                        break
-                if all([torch.abs(var.grad.view(-1).max()).item() < gtol
-                        for var in opt_params if var.grad is not None]):
-                    break
-                prev_loss = loss.item()
-
-            with torch.no_grad():
-                smpl_params, _, _, _, _ = flow_net(
-                    conditioning_feats, z=z.unsqueeze(1))
-                smpl_params = {k: v.squeeze(dim=1)
-                                for k, v in smpl_params.items()}
-                smpl_params['betas'] = betas
-                smpl_output = smpl(**smpl_params, pose2rot=False)
-                opt_keypoints = smpl_output.joints
-                opt_vertices = smpl_output.vertices
-            
-            refined_vertices = opt_vertices
-            refined_keypoints = opt_keypoints
-            
-            refined_keypoints -= refined_keypoints[:, [self.pelvis_ind]]
-            
-            mpjpe, re, _, _ = eval_pose(refined_keypoints[:, self.keypoint_list],
-                                        gt_keypoints_3d[:, 0, self.keypoint_list])
-            
-            return mpjpe, re
-            
-        if hasattr(self, 'rsf_mpjpe') or hasattr(self, 'rso_mpjpe') or hasattr(self, 'amf_mpjpe') or  hasattr(self, 'amo_mpjpe'):
-            
-            n_measure_points = 30
-            import pdb;pdb.set_trace()
+            n_measure_points = self.n_measure_points
+        
             pred_vertices = output["pred_vertices"]
             target_vertices = batch['vertices']
             
-            from scipy.io import loadmat
-            from pytorch3d.structures import Meshes
             uv_path = "data/UV_Processed.mat"
             DP_UV = loadmat(uv_path)
             faces_densepose = torch.from_numpy((DP_UV['All_Faces'] - 1).astype(np.int64)).cuda()
@@ -394,95 +272,191 @@ class Evaluator:
             pred_normals = torch.empty_like(pred_vertices)
             pred_normals[:, :, verts_map] = pred_normals_
             
-        if hasattr(self, 'rsf_mpjpe'):
+        if hasattr(self, 'rmms_mpjpe'):
             idx_random_sampling = torch.randint(0, pred_vertices.shape[2], (batch_size, n_measure_points)).cuda()
-            idx_min_error_rsf = filtering(pred_vertices, target_vertices, pred_normals, target_normals, idx_random_sampling)
+            idx_min_error_rmms = self.filtering(num_samples, pred_vertices, target_vertices, pred_normals, target_normals, idx_random_sampling)
             
-            rsf_mpjpe = torch.gather(torch.from_numpy(mpjpe), 1, idx_min_error_rsf[:, None].cpu())
-            self.rsf_mpjpe[self.counter:self.counter+batch_size] = rsf_mpjpe.numpy().squeeze()
+            rmms_mpjpe = torch.gather(torch.from_numpy(mpjpe), 1, idx_min_error_rmms[:, None].cpu())
+            self.rmms_mpjpe[self.counter:self.counter+batch_size] = rmms_mpjpe.numpy().squeeze()
         
-        if hasattr(self, 'rsf_re'):
-            rsf_re = torch.gather(torch.from_numpy(re), 1, idx_min_error_rsf[:, None].cpu())
-            self.rsf_re[self.counter:self.counter+batch_size] = rsf_re.numpy().squeeze()
+        if hasattr(self, 'rmms_re'):
+            rmms_re = torch.gather(torch.from_numpy(re), 1, idx_min_error_rmms[:, None].cpu())
+            self.rmms_re[self.counter:self.counter+batch_size] = rmms_re.numpy().squeeze()
             
-        if hasattr(self, 'rso_mpjpe'):
-            rso_mpjpe, rso_re = optimization(target_vertices, output, idx_min_error_rsf, idx_random_sampling)
-            self.rso_mpjpe[self.counter:self.counter+batch_size] = rso_mpjpe.squeeze()
+        if hasattr(self, 'rmsf_mpjpe'):
+            refined_keypoints = self.optimization(flow_net, smpl, target_vertices, output, idx_min_error_rmms, idx_random_sampling)
+            rmsf_mpjpe, rmsf_re, _, _ = eval_pose(refined_keypoints[:, self.keypoint_list],
+                                                  gt_keypoints_3d[:, 0, self.keypoint_list])
+            self.rmsf_mpjpe[self.counter:self.counter+batch_size] = rmsf_mpjpe.squeeze()
             
-        if hasattr(self, 'rso_re'):
-            self.rso_re[self.counter:self.counter+batch_size] = rso_re.squeeze()
+        if hasattr(self, 'rmsf_re'):
+            self.rmsf_re[self.counter:self.counter+batch_size] = rmsf_re.squeeze()
             
-        if hasattr(self, 'amf_mpjpe') or hasattr(self, 'amf_re'):
-            assert torch.argmax(output['log_prob'], dim=-1).sum() == 0  # mode has the highest prob
-            """
-            pred_keypoints_3d_filter = pred_keypoints_3d[:, :, self.keypoint_list]
-            gt_keypoints_3d_filter = gt_keypoints_3d[:, :, self.keypoint_list]            
-            uncertainty_3d_joints = torch.var(pred_keypoints_3d_filter - pred_keypoints_3d_filter.mean(dim=1, keepdims=True), dim=(1,3))
-            index_most_uncertain_joint = torch.argsort(uncertainty_3d_joints, descending=True)[:, 0]
-            pred_keypoint = torch.gather(pred_keypoints_3d_filter, 2, index_most_uncertain_joint[:, None, None, None].expand(-1, num_samples, -1, 3))
-            gt_keypoint = torch.gather(gt_keypoints_3d_filter, 2, index_most_uncertain_joint[:, None, None, None].expand(-1, num_samples, -1, 3))
-            joint_error = torch.norm(pred_keypoint - gt_keypoint, dim=(2,3))
-            """
+        if hasattr(self, 'amms_mpjpe') or hasattr(self, 'amms_re'):
+            self.timer.start()
+            idx_most_uncertain_vertex = self.simulated_active_measurement(pred_vertices, pred_normals, n_measure_points)
+            self.timer.end()
+            time_am = self.timer.elapsed_time()
+            idx_min_error_amms = self.filtering(num_samples, pred_vertices, target_vertices, pred_normals, target_normals, idx_most_uncertain_vertex)
+            amms_mpjpe = torch.gather(torch.from_numpy(mpjpe), 1, idx_min_error_amms[:, None].cpu())
+            self.amms_mpjpe[self.counter:self.counter+batch_size] = amms_mpjpe.numpy().squeeze()
             
-            pred_vertices_var = torch.var(pred_vertices, dim=1).sum(dim=-1)
-            pred_normals_var = torch.var(pred_normals, dim=1).sum(dim=-1)
-            var = pred_vertices_var * 100 - pred_normals_var * 1
+        if hasattr(self, 'amms_re'):
+            amms_re = torch.gather(torch.from_numpy(re), 1, idx_min_error_amms[:, None].cpu())
+            self.amms_re[self.counter:self.counter+batch_size] = amms_re.numpy().squeeze()
             
-            idxs = []
-            dist_from_measured = torch.zeros_like(var)
-            softmax = torch.nn.Softmax(dim=1)
-            weight = 1
-            while True:
-                # idx = torch.argsort(var + dist_from_measured, dim=-1, descending=True)[:, :1]
-                cost = var + dist_from_measured
-                cost *= weight
-                idx = Categorical(probs=softmax(cost)).sample()[:, None]
-                idxs.append(idx)
-                vertex_measured = torch.gather(pred_vertices[:, 0], 1, idx[:, :, None].expand(-1, -1, 3))
-                dist_from_measured += torch.norm(pred_vertices[:, 0] - vertex_measured, dim=-1)
-                num_unique = np.array([len(torch.unique(i)) for i in torch.cat(idxs, dim=-1)])
-                if np.all(num_unique > n_measure_points):
-                    break
-            idx_most_uncertain_vertex = torch.cat(idxs, dim=-1).cpu().numpy()
-            idx_most_uncertain_vertex = torch.LongTensor(np.array([unsort_unique(idx)[:n_measure_points] for idx in idx_most_uncertain_vertex])).cuda()
-            
-            # idx_most_uncertain_vertex = torch.randint(0, var.shape[1], (batch_size, 1,)).cuda()
-            # idx_most_uncertain_vertex = torch.argsort(var, dim=-1, descending=True)[:, :n_measure_points]
-            # print(idx_most_uncertain_vertex)
-            
-            idx_min_error_amf = filtering(pred_vertices, target_vertices, pred_normals, target_normals, idx_most_uncertain_vertex)
-            amf_mpjpe = torch.gather(torch.from_numpy(mpjpe), 1, idx_min_error_amf[:, None].cpu())
-            self.amf_mpjpe[self.counter:self.counter+batch_size] = amf_mpjpe.numpy().squeeze()
-            
-        if hasattr(self, 'amf_re'):
-            amf_re = torch.gather(torch.from_numpy(re), 1, idx_min_error_amf[:, None].cpu())
-            self.amf_re[self.counter:self.counter+batch_size] = amf_re.numpy().squeeze()
+        if hasattr(self, 'time_am'):
+            self.time_am[self.counter:self.counter+batch_size] = time_am
 
-        if hasattr(self, 'amo_mpjpe') or hasattr(self, 'amo_re'):
-            amo_mpjpe, amo_re = optimization(target_vertices, output, idx_min_error_amf, idx_most_uncertain_vertex)
-            self.amo_mpjpe[self.counter:self.counter+batch_size] = amo_mpjpe.squeeze()    
-        if hasattr(self, 'amo_re'):
-            self.amo_re[self.counter:self.counter+batch_size] = amo_re.squeeze()
-        if hasattr(self, 'opt_mpjpe'):
-            self.opt_mpjpe[self.counter:self.counter+batch_size] = opt_mpjpe
-        if hasattr(self, 'opt_re'):
-            self.opt_re[self.counter:self.counter+batch_size] = opt_re
-        if hasattr(self, 'corr'):
-            mpjpe_all_neg_mean = mpjpe_all - \
-                mpjpe_all.mean(axis=1, keepdims=True)
-            mpjpe_neg_mean = mpjpe - mpjpe.mean(axis=1, keepdims=True)
-            self.corr[self.counter:self.counter+batch_size] = np.einsum("ijk,ij->ik",
-                                                                        mpjpe_all_neg_mean /
-                                                                        mpjpe_all_neg_mean.std(
-                                                                            axis=1, keepdims=True),
-                                                                        mpjpe_neg_mean / mpjpe_neg_mean.std(axis=1, keepdims=True)) / num_samples
-        if hasattr(self, 'corr_per_joint'):
-            mpjpe_all_neg_mean = mpjpe_all - \
-                mpjpe_all.mean(axis=1, keepdims=True)
-            self.corr_per_joint[self.counter:self.counter+batch_size] = np.einsum("ijk,ijl->ikl",
-                                                                                  mpjpe_all_neg_mean /
-                                                                                  mpjpe_all_neg_mean.std(
-                                                                                      axis=1, keepdims=True),
-                                                                                  mpjpe_all_neg_mean / mpjpe_all_neg_mean.std(axis=1, keepdims=True)) / num_samples
-
+        if hasattr(self, 'amsf_mpjpe') or hasattr(self, 'amsf_re'):
+            self.timer.start()
+            refined_keypoints = self.optimization(flow_net, smpl, target_vertices, output, idx_min_error_amms, idx_most_uncertain_vertex)
+            self.timer.end()
+            time_sf = self.timer.elapsed_time()
+            amsf_mpjpe, amsf_re, _, _ = eval_pose(refined_keypoints[:, self.keypoint_list],
+                                                  gt_keypoints_3d[:, 0, self.keypoint_list])
+            self.amsf_mpjpe[self.counter:self.counter+batch_size] = amsf_mpjpe.squeeze()    
+            
+        if hasattr(self, 'amsf_re'):
+            self.amsf_re[self.counter:self.counter+batch_size] = amsf_re.squeeze()
+            
+        if hasattr(self, 'time_sf'):
+            self.time_sf[self.counter:self.counter+batch_size] = time_sf
+        
         self.counter += batch_size
+        
+        
+    def simulated_active_measurement(self, pred_vertices, pred_normals, n_measure_points):
+        pred_vertices_var = torch.var(pred_vertices, dim=1).sum(dim=-1)
+        pred_normals_var = torch.var(pred_normals, dim=1).sum(dim=-1)
+        var = pred_vertices_var * 100 - pred_normals_var * 1
+        
+        idxs = []
+        dist_from_measured = torch.zeros_like(var)
+        softmax = torch.nn.Softmax(dim=1)
+        weight = 1
+        while True:
+            # idx = torch.argsort(var + dist_from_measured, dim=-1, descending=True)[:, :1]
+            cost = var + dist_from_measured
+            cost *= weight
+            idx = Categorical(probs=softmax(cost)).sample()[:, None]
+            idxs.append(idx)
+            vertex_measured = torch.gather(pred_vertices[:, 0], 1, idx[:, :, None].expand(-1, -1, 3))
+            dist_from_measured += torch.norm(pred_vertices[:, 0] - vertex_measured, dim=-1)
+            num_unique = np.array([len(torch.unique(i)) for i in torch.cat(idxs, dim=-1)])
+            if np.all(num_unique > n_measure_points):
+                break
+        idx_most_uncertain_vertex = torch.cat(idxs, dim=-1).cpu().numpy()
+        idx_most_uncertain_vertex = torch.LongTensor(np.array([unsort_unique(idx)[:n_measure_points] for idx in idx_most_uncertain_vertex])).cuda()
+        
+        return idx_most_uncertain_vertex
+    
+        
+    def filtering(self, num_samples, pred_vertices, target_vertices, pred_normals, target_normals, idx_vert, sigma_noise=0.02):
+        pred_vertices_filter = torch.gather(pred_vertices, 2, idx_vert[:, None, :, None].expand(-1, num_samples, -1, 3))
+        target_vertices_filter = torch.gather(target_vertices, 1, idx_vert[:, :, None].expand(-1, -1, 3)).unsqueeze(1)
+        # noise on depth measurement (y axis in the camera coordinate system)
+        noise = torch.randn_like(target_vertices_filter) * sigma_noise
+        noise[..., [0, 2]] = 0
+        target_vertices_filter_noise = target_vertices_filter + noise
+        vertex_error = torch.norm(pred_vertices_filter - target_vertices_filter_noise, dim=-1).mean(dim=-1)
+        
+        pred_normals_filter = torch.gather(pred_normals, 2, idx_vert[:, None, :, None].expand(-1, num_samples, -1, 3))
+        target_normals_filter = torch.gather(target_normals, 1, idx_vert[:, :, None].expand(-1, -1, 3))
+        normal_error = - torch.einsum('ijkl,ikl->ijk', pred_normals_filter, target_normals_filter).mean(dim=-1)
+        
+        error = normal_error + vertex_error #- output["log_prob"] / 1000
+        # error = vertex_error - output["log_prob"] / 1000
+        idx_min_error = torch.argmin(error, dim=1)
+        
+        return idx_min_error
+
+
+    def optimization(self, flow_net, smpl, target_vertices, output, idx_min_error, idx_vert, sigma_noise=0.02):
+        target_vertices_filter = torch.gather(target_vertices, 1, idx_vert[:, :, None].expand(-1, -1, 3)).unsqueeze(1)
+        # noise on depth measurement (y axis in the camera coordinate system)
+        noise = torch.randn_like(target_vertices_filter) * sigma_noise
+        noise[..., [0, 2]] = 0
+        target_vertices_filter_noise = target_vertices_filter + noise
+        pcls = Pointclouds(points=[v[0] for v in target_vertices_filter_noise])
+
+        # packed representation for pointclouds
+        points = pcls.points_packed()  # (P, 3)
+        points_first_idx = pcls.cloud_to_packed_first_idx()
+        max_points = pcls.num_points_per_cloud().max().item()
+        
+        # Get predicted betas
+        betas = torch.gather(output['pred_smpl_params']['betas'].detach().clone(), 1, idx_min_error[:, None, None].tile([1, 1, 10]))[:, 0]
+        global_orient = torch.gather(output['pred_smpl_params']['global_orient'].detach().clone(), 1, idx_min_error[:, None, None, None, None].tile([1, 1, 1, 3, 3]))[:, 0]
+        z_init = torch.gather(output['z'].detach().clone(), 1, idx_min_error[:, None, None].tile([1, 1, 144]))[:, 0]
+        z = z_init.detach().clone()
+        conditioning_feats = output['conditioning_feats'].detach().clone()
+
+        # Make z, betas and camera_translation optimizable
+        z.requires_grad = True
+
+        # Setup optimizer
+        opt_params = [z]
+        optimizer = torch.optim.LBFGS(opt_params, lr=1.0, max_iter=5, line_search_fn='strong_wolfe')
+        
+        def pose_prior(z1, z2):
+            return ((z1 - z2) ** 2).mean(dim=1)
+
+        # Define fitting closure
+        def closure():
+            optimizer.zero_grad(set_to_none=True)
+            smpl_params, _, _, _, _ = flow_net(
+                conditioning_feats, z=z.unsqueeze(1))
+            smpl_params = {k: v.squeeze(1)
+                            for k, v in smpl_params.items()}
+            # Override regression betas with the optimizable variable
+            smpl_params['betas'] = betas
+            smpl_params['global_orient'] = global_orient
+            smpl_output = smpl(**smpl_params, pose2rot=False)
+            curr_vertices = smpl_output.vertices[:, self.Vmap]
+            mesh = Meshes(verts=list(curr_vertices),
+                            faces=[self.faces] * len(curr_vertices))
+            # packed representation for faces
+            verts_packed = mesh.verts_packed()
+            faces_packed = mesh.faces_packed()
+            tris = verts_packed[faces_packed]  # (T, 3, 3)
+            tris_first_idx = mesh.mesh_to_faces_packed_first_idx()
+
+            loss = point_face_distance(
+                points, points_first_idx, tris, tris_first_idx, max_points, 0.005).mean()
+
+            loss += pose_prior(z, z_init).mean() * 1e-2
+            loss.backward()
+            return loss
+
+        # Run fitting until convergence
+        gtol = 1e-9
+        ftol = 1e-9
+        prev_loss = None
+        for i in range(10):
+            loss = optimizer.step(closure)
+            if i > 0:
+                loss_rel_change = rel_change(prev_loss, loss.item())
+                if loss_rel_change < ftol:
+                    break
+            if all([torch.abs(var.grad.view(-1).max()).item() < gtol
+                    for var in opt_params if var.grad is not None]):
+                break
+            prev_loss = loss.item()
+
+        with torch.no_grad():
+            smpl_params, _, _, _, _ = flow_net(
+                conditioning_feats, z=z.unsqueeze(1))
+            smpl_params = {k: v.squeeze(dim=1)
+                            for k, v in smpl_params.items()}
+            smpl_params['betas'] = betas
+            smpl_output = smpl(**smpl_params, pose2rot=False)
+            opt_keypoints = smpl_output.joints
+            opt_vertices = smpl_output.vertices
+        
+        refined_vertices = opt_vertices
+        refined_keypoints = opt_keypoints
+        
+        refined_keypoints -= refined_keypoints[:, [self.pelvis_ind]]
+        
+        return refined_keypoints
