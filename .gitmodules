@@ -1,0 +1,3 @@
+[submodule "ProHMR"]
+	path = ProHMR
+	url = https://github.com/nkolot/ProHMR.git

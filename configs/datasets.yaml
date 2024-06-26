@@ -1,0 +1,138 @@
+3DPW-TEST-OC:
+    TYPE: ImageDataset
+    DATASET_FILE: data/datasets/3dpw_test_oc.npz
+    IMG_DIR: /home-local/maeda/HMR/3DPW
+    KEYPOINT_LIST: [25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 43]
+    USE_HIPS: False
+# 3DPW-TEST-OC-CBP:
+#     TYPE: ImageDataset
+#     DATASET_FILE: data/datasets/3dpw_test_oc_courtyard_backpack_00.npz
+#     IMG_DIR: /home-local/maeda/HMR/3DPW
+#     KEYPOINT_LIST: [25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 43]
+#     USE_HIPS: False
+# 3DPW-TEST-OC-CBB00:
+#     TYPE: ImageDataset
+#     DATASET_FILE: data/datasets/3dpw_test_oc_courtyard_basketball_00.npz
+#     IMG_DIR: /home-local/maeda/HMR/3DPW
+#     KEYPOINT_LIST: [25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 43]
+#     USE_HIPS: False
+# 3DPW-TEST-OC-CBB01:
+#     TYPE: ImageDataset
+#     DATASET_FILE: data/datasets/3dpw_test_oc_courtyard_basketball_01.npz
+#     IMG_DIR: /home-local/maeda/HMR/3DPW
+#     KEYPOINT_LIST: [25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 43]
+#     USE_HIPS: False
+# 3DPW-TEST-OC-CBS:
+#     TYPE: ImageDataset
+#     DATASET_FILE: data/datasets/3dpw_test_oc_courtyard_bodyScannerMotions_00.npz
+#     IMG_DIR: /home-local/maeda/HMR/3DPW
+#     KEYPOINT_LIST: [25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 43]
+#     USE_HIPS: False
+# 3DPW-TEST-OC-CB:
+#     TYPE: ImageDataset
+#     DATASET_FILE: data/datasets/3dpw_test_oc_courtyard_box_00.npz
+#     IMG_DIR: /home-local/maeda/HMR/3DPW
+#     KEYPOINT_LIST: [25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 43]
+#     USE_HIPS: False
+# 3DPW-TEST-OC-CG:
+#     TYPE: ImageDataset
+#     DATASET_FILE: data/datasets/3dpw_test_oc_courtyard_golf_00.npz
+#     IMG_DIR: /home-local/maeda/HMR/3DPW
+#     KEYPOINT_LIST: [25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 43]
+#     USE_HIPS: False
+# 3DPW-TEST-OC-CJ:
+#     TYPE: ImageDataset
+#     DATASET_FILE: data/datasets/3dpw_test_oc_courtyard_jacket_00.npz
+#     IMG_DIR: /home-local/maeda/HMR/3DPW
+#     KEYPOINT_LIST: [25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 43]
+#     USE_HIPS: False
+# 3DPW-TEST-OC-CL:
+#     TYPE: ImageDataset
+#     DATASET_FILE: data/datasets/3dpw_test_oc_courtyard_laceShoe_00.npz
+#     IMG_DIR: /home-local/maeda/HMR/3DPW
+#     KEYPOINT_LIST: [25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 43]
+#     USE_HIPS: False
+# 3DPW-TEST-OC-DS:
+#     TYPE: ImageDataset
+#     DATASET_FILE: data/datasets/3dpw_test_oc_downtown_stairs_00.npz
+#     IMG_DIR: /home-local/maeda/HMR/3DPW
+#     KEYPOINT_LIST: [25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 43]
+#     USE_HIPS: False
+# 3DPW-TEST-OC-FG:
+#     TYPE: ImageDataset
+#     DATASET_FILE: data/datasets/3dpw_test_oc_flat_guitar_01.npz
+#     IMG_DIR: /home-local/maeda/HMR/3DPW
+#     KEYPOINT_LIST: [25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 43]
+#     USE_HIPS: False
+# 3DPW-TEST-OC-FP:
+#     TYPE: ImageDataset
+#     DATASET_FILE: data/datasets/3dpw_test_oc_flat_packBags_00.npz
+#     IMG_DIR: /home-local/maeda/HMR/3DPW
+#     KEYPOINT_LIST: [25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 43]
+#     USE_HIPS: False
+# 3DPW-TEST-OC-OC00:
+#     TYPE: ImageDataset
+#     DATASET_FILE: data/datasets/3dpw_test_oc_outdoors_climbing_00.npz
+#     IMG_DIR: /home-local/maeda/HMR/3DPW
+#     KEYPOINT_LIST: [25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 43]
+#     USE_HIPS: False
+# 3DPW-TEST-OC-OC01:
+#     TYPE: ImageDataset
+#     DATASET_FILE: data/datasets/3dpw_test_oc_outdoors_climbing_01.npz
+#     IMG_DIR: /home-local/maeda/HMR/3DPW
+#     KEYPOINT_LIST: [25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 43]
+#     USE_HIPS: False
+# 3DPW-TEST-OC-OC02:
+#     TYPE: ImageDataset
+#     DATASET_FILE: data/datasets/3dpw_test_oc_outdoors_climbing_02.npz
+#     IMG_DIR: /home-local/maeda/HMR/3DPW
+#     KEYPOINT_LIST: [25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 43]
+#     USE_HIPS: False
+# 3DPW-TEST-OC-OF:
+#     TYPE: ImageDataset
+#     DATASET_FILE: data/datasets/3dpw_test_oc_outdoors_fencing_01.npz
+#     IMG_DIR: /home-local/maeda/HMR/3DPW
+#     KEYPOINT_LIST: [25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 43]
+#     USE_HIPS: False
+# 3DPW-TEST-OC-OFS00:
+#     TYPE: ImageDataset
+#     DATASET_FILE: data/datasets/3dpw_test_oc_outdoors_freestyle_00.npz
+#     IMG_DIR: /home-local/maeda/HMR/3DPW
+#     KEYPOINT_LIST: [25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 43]
+#     USE_HIPS: False
+# 3DPW-TEST-OC-OFS01:
+#     TYPE: ImageDataset
+#     DATASET_FILE: data/datasets/3dpw_test_oc_outdoors_freestyle_01.npz
+#     IMG_DIR: /home-local/maeda/HMR/3DPW
+#     KEYPOINT_LIST: [25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 43]
+#     USE_HIPS: False
+# 3DPW-TEST-OC-OG:
+#     TYPE: ImageDataset
+#     DATASET_FILE: data/datasets/3dpw_test_oc_outdoors_golf_00.npz
+#     IMG_DIR: /home-local/maeda/HMR/3DPW
+#     KEYPOINT_LIST: [25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 43]
+#     USE_HIPS: False
+# 3DPW-TEST-OC-OP00:
+#     TYPE: ImageDataset
+#     DATASET_FILE: data/datasets/3dpw_test_oc_outdoors_parcours_00.npz
+#     IMG_DIR: /home-local/maeda/HMR/3DPW
+#     KEYPOINT_LIST: [25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 43]
+#     USE_HIPS: False
+# 3DPW-TEST-OC-OP01:
+#     TYPE: ImageDataset
+#     DATASET_FILE: data/datasets/3dpw_test_oc_outdoors_parcours_01.npz
+#     IMG_DIR: /home-local/maeda/HMR/3DPW
+#     KEYPOINT_LIST: [25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 43]
+#     USE_HIPS: False
+# 3DPW-TEST-OC-OS00:
+#     TYPE: ImageDataset
+#     DATASET_FILE: data/datasets/3dpw_test_oc_outdoors_slalom_00.npz
+#     IMG_DIR: /home-local/maeda/HMR/3DPW
+#     KEYPOINT_LIST: [25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 43]
+#     USE_HIPS: False
+# 3DPW-TEST-OC-OS01:
+#     TYPE: ImageDataset
+#     DATASET_FILE: data/datasets/3dpw_test_oc_outdoors_slalom_01.npz
+#     IMG_DIR: /home-local/maeda/HMR/3DPW
+#     KEYPOINT_LIST: [25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 43]
+#     USE_HIPS: False
