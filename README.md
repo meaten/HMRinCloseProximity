@@ -10,7 +10,13 @@ Work done during the internship at Frontier Research Center, Toyota Motor Corpor
 
 [[paper](https://arxiv.org/abs/2310.08116)]
 
-![teaser](teaser.png)
+<p align="center">
+  <img src="teaser.png" width=600 />
+</p>
+
+## Note
+
+We didn't include the control module of the Toyota Human Support Robot for touch sensing since it largely depends on the control packages belonging to Toyota Motor Corporation.
 
 
 ## Dependencies
