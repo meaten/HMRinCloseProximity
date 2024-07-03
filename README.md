@@ -20,10 +20,12 @@ We didn't include the Toyota Human Support Robot's control module for touch sens
 
 
 ## Dependencies
+Python 3.8.10
 
 ```
 git submodule update --init
 pip install -r requirements.txt
+pip install -r requirements_git.txt
 cd ProHMR
 python setup.py develop
 ```
