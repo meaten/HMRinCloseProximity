@@ -21,10 +21,10 @@ parser.add_argument('--checkpoint', type=str, default='data/checkpoint.pt', help
 parser.add_argument('--model_cfg', type=str, default=None, help='Path to config file. If not set use the default (prohmr/configs/prohmr.yaml)')
 parser.add_argument('--dataset', type=str, default='3DPW-TEST-OC', help='Dataset to evaluate')
 parser.add_argument('--batch_size', type=int, default=1, help='Batch size for inference')
-parser.add_argument('--num_measurements', type=int, default=30)
-parser.add_argument('--num_samples', type=int, default=64, help='Number of test samples to draw')
+parser.add_argument('--num_measurements', type=int, default=3)
+parser.add_argument('--num_samples', type=int, default=1024, help='Number of test samples to draw')
 parser.add_argument('--num_workers', type=int, default=4, help='Number of workers used for data loading')
-parser.add_argument('--log_freq', type=int, default=10, help='How often to log results')
+parser.add_argument('--log_freq', type=int, default=2500, help='How often to log results')
 parser.add_argument('--shuffle', dest='shuffle', action='store_true', default=False, help='Shuffle the dataset during evaluation')
 parser.add_argument('--save_patch', action='store_true')
 
@@ -76,6 +76,8 @@ for i, batch in enumerate(tqdm(dataloader)):
     evaluator(out, batch, flow_net=model.flow, smpl=model.smpl)
     if i % args.log_freq == args.log_freq - 1:
         evaluator.log()
+evaluator.log()
+        
         
         
         
