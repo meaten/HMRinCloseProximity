@@ -16,7 +16,7 @@ Work done during the internship at Frontier Research Center, Toyota Motor Corpor
 
 ## Note
 
-We didn't include the control module of the Toyota Human Support Robot for touch sensing since it largely depends on the control packages belonging to Toyota Motor Corporation.
+We didn't include the Toyota Human Support Robot's control module for touch sensing since it largely depends on the control packages belonging to Toyota Motor Corporation.
 
 
 ## Dependencies
@@ -25,7 +25,7 @@ We didn't include the control module of the Toyota Human Support Robot for touch
 git submodule update --init
 pip install -r requirements.txt
 cd ProHMR
-python setup.py developw
+python setup.py develop
 ```
 
 ## Data Preparation
