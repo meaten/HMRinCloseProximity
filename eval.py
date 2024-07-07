@@ -56,8 +56,8 @@ dataset = create_dataset(model_cfg, dataset_cfg, train=False)
 dataloader = torch.utils.data.DataLoader(dataset, args.batch_size, shuffle=args.shuffle, num_workers=args.num_workers)
 
 # List of metrics to log
-metrics = ['mode_mpjpe', 'rmms_mpjpe', 'rmsf_mpjpe', 'amms_mpjpe', 'amsf_mpjpe',
-           'mode_re', 'rmms_re', 'rmsf_re', 'amms_re', 'amsf_re',
+metrics = ['mode_mpjpe', 'rmcs_mpjpe', 'rmsf_mpjpe', 'amcs_mpjpe', 'amsf_mpjpe',
+           'mode_re', 'rmcs_re', 'rmsf_re', 'amcs_re', 'amsf_re',
            'time_am', 'time_sf']
 
 # Setup evaluator object

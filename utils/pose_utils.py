@@ -244,7 +244,7 @@ class CustomEvaluator(Evaluator):
             self.min_re[self.counter:self.counter+batch_size] = min_re
         
             
-        if hasattr(self, 'rmms_mpjpe') or hasattr(self, 'rmsf_mpjpe') or hasattr(self, 'amms_mpjpe') or  hasattr(self, 'amsf_mpjpe'):
+        if hasattr(self, 'rmcs_mpjpe') or hasattr(self, 'rmsf_mpjpe') or hasattr(self, 'amcs_mpjpe') or  hasattr(self, 'amsf_mpjpe'):
             
             n_measure_points = self.n_measure_points
         
@@ -272,19 +272,19 @@ class CustomEvaluator(Evaluator):
             pred_normals = torch.empty_like(pred_vertices)
             pred_normals[:, :, verts_map] = pred_normals_
             
-        if hasattr(self, 'rmms_mpjpe'):
+        if hasattr(self, 'rmcs_mpjpe'):
             idx_random_sampling = torch.randint(0, pred_vertices.shape[2], (batch_size, n_measure_points)).cuda()
-            idx_min_error_rmms = self.filtering(num_samples, pred_vertices, target_vertices, pred_normals, target_normals, idx_random_sampling)
+            idx_min_error_rmcs = self.filtering(num_samples, pred_vertices, target_vertices, pred_normals, target_normals, idx_random_sampling)
             
-            rmms_mpjpe = torch.gather(torch.from_numpy(mpjpe), 1, idx_min_error_rmms[:, None].cpu())
-            self.rmms_mpjpe[self.counter:self.counter+batch_size] = rmms_mpjpe.numpy().squeeze()
+            rmcs_mpjpe = torch.gather(torch.from_numpy(mpjpe), 1, idx_min_error_rmcs[:, None].cpu())
+            self.rmcs_mpjpe[self.counter:self.counter+batch_size] = rmcs_mpjpe.numpy().squeeze()
         
-        if hasattr(self, 'rmms_re'):
-            rmms_re = torch.gather(torch.from_numpy(re), 1, idx_min_error_rmms[:, None].cpu())
-            self.rmms_re[self.counter:self.counter+batch_size] = rmms_re.numpy().squeeze()
+        if hasattr(self, 'rmcs_re'):
+            rmcs_re = torch.gather(torch.from_numpy(re), 1, idx_min_error_rmcs[:, None].cpu())
+            self.rmcs_re[self.counter:self.counter+batch_size] = rmcs_re.numpy().squeeze()
             
         if hasattr(self, 'rmsf_mpjpe'):
-            refined_keypoints = self.optimization(flow_net, smpl, target_vertices, output, idx_min_error_rmms, idx_random_sampling)
+            refined_keypoints = self.optimization(flow_net, smpl, target_vertices, output, idx_min_error_rmcs, idx_random_sampling)
             rmsf_mpjpe, rmsf_re, _, _ = eval_pose(refined_keypoints[:, self.keypoint_list],
                                                   gt_keypoints_3d[:, 0, self.keypoint_list])
             self.rmsf_mpjpe[self.counter:self.counter+batch_size] = rmsf_mpjpe.squeeze()
@@ -292,25 +292,25 @@ class CustomEvaluator(Evaluator):
         if hasattr(self, 'rmsf_re'):
             self.rmsf_re[self.counter:self.counter+batch_size] = rmsf_re.squeeze()
             
-        if hasattr(self, 'amms_mpjpe') or hasattr(self, 'amms_re'):
+        if hasattr(self, 'amcs_mpjpe') or hasattr(self, 'amcs_re'):
             self.timer.start()
             idx_most_uncertain_vertex = self.simulated_active_measurement(pred_vertices, pred_normals, n_measure_points)
             self.timer.end()
             time_am = self.timer.elapsed_time()
-            idx_min_error_amms = self.filtering(num_samples, pred_vertices, target_vertices, pred_normals, target_normals, idx_most_uncertain_vertex)
-            amms_mpjpe = torch.gather(torch.from_numpy(mpjpe), 1, idx_min_error_amms[:, None].cpu())
-            self.amms_mpjpe[self.counter:self.counter+batch_size] = amms_mpjpe.numpy().squeeze()
+            idx_min_error_amcs = self.filtering(num_samples, pred_vertices, target_vertices, pred_normals, target_normals, idx_most_uncertain_vertex)
+            amcs_mpjpe = torch.gather(torch.from_numpy(mpjpe), 1, idx_min_error_amcs[:, None].cpu())
+            self.amcs_mpjpe[self.counter:self.counter+batch_size] = amcs_mpjpe.numpy().squeeze()
             
-        if hasattr(self, 'amms_re'):
-            amms_re = torch.gather(torch.from_numpy(re), 1, idx_min_error_amms[:, None].cpu())
-            self.amms_re[self.counter:self.counter+batch_size] = amms_re.numpy().squeeze()
+        if hasattr(self, 'amcs_re'):
+            amcs_re = torch.gather(torch.from_numpy(re), 1, idx_min_error_amcs[:, None].cpu())
+            self.amcs_re[self.counter:self.counter+batch_size] = amcs_re.numpy().squeeze()
             
         if hasattr(self, 'time_am'):
             self.time_am[self.counter:self.counter+batch_size] = time_am
 
         if hasattr(self, 'amsf_mpjpe') or hasattr(self, 'amsf_re'):
             self.timer.start()
-            refined_keypoints = self.optimization(flow_net, smpl, target_vertices, output, idx_min_error_amms, idx_most_uncertain_vertex)
+            refined_keypoints = self.optimization(flow_net, smpl, target_vertices, output, idx_min_error_amcs, idx_most_uncertain_vertex)
             self.timer.end()
             time_sf = self.timer.elapsed_time()
             amsf_mpjpe, amsf_re, _, _ = eval_pose(refined_keypoints[:, self.keypoint_list],
